@@ -1,0 +1,86 @@
+name: Production Integrity
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  integrity:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Validate JavaScript syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r -d '' file; do
+            node --check "$file"
+          done < <(find . -type f -name '*.js' -not -path './.git/*' -print0)
+
+      - name: Check critical integration invariants
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q "ahslifnthiwfkmaswjno.supabase.co" production-bridge.js
+          grep -q "account-admin" accounts-console-script.js
+          grep -q "gc-v32" sw.js
+          grep -q "driver-workspace.html" sw.js
+          grep -q "operations-control-v2.html" sw.js
+          grep -q "operations-events.js" sw.js
+          grep -q "customer-portal.html" sw.js
+          grep -q "warehouse-os.html" sw.js
+          grep -q "production-bridge.js" sw.js
+          grep -q "staff-auth-fix.js" sw.js
+          grep -q "operations-exception-engine.js" sw.js
+          grep -q "no-store" _headers
+          grep -q "Content-Security-Policy" _headers
+          grep -q 'project_id = "ahslifnthiwfkmaswjno"' supabase/config.toml
+          grep -q '\[functions.account-admin\]' supabase/config.toml
+          grep -q 'verify_jwt = true' supabase/config.toml
+          ! grep -RniE "service_role|SUPABASE_SERVICE_ROLE_KEY|sb_secret_" --exclude-dir=.git --exclude='*.md' .
+
+      - name: Validate Supabase migration filenames
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -d supabase/migrations ]; then
+            find supabase/migrations -maxdepth 1 -type f -name '*.sql' -print0 | while IFS= read -r -d '' file; do
+              base="$(basename "$file")"
+              [[ "$base" =~ ^[0-9]{14}_[a-z0-9_]+\.sql$ ]]
+            done
+          fi
+
+      - name: Verify required production files exist
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f index.html
+          test -f sw.js
+          test -f production-bridge.js
+          test -f staff-auth-fix.js
+          test -f operations-exception-engine.js
+          test -f operations-events.js
+          test -f driver-workspace.html
+          test -f customer-portal.html
+          test -f warehouse-os.html
+          test -f operations-control.html
+          test -f operations-control-v2.html
+          test -f accounts-console.html
+          test -f staff-os.html
+          test -f logistics-os.html
+          test -f operations-command-center.html
+          test -f supabase/config.toml
+          test -f functions/health.js
